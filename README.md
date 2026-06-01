@@ -54,5 +54,3 @@ npm run reset
 | `AMOUNT`        | `1`                | attack  | Amount per transfer                                      |
 | `ENDPOINT`      | `/transfer/naive`  | attack  | Endpoint under attack                                    |
 | `PORT`          | `3000`             | both    | HTTP port                                                |
-
-See `isolation-levels.md` for the isolation-level theory.
