@@ -1,0 +1,23 @@
+{
+  "name": "race-sim",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "serve": "tsx main.ts serve",
+    "attack": "tsx main.ts attack",
+    "reset": "tsx main.ts reset",
+    "dirty": "tsx main.ts dirty"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "mysql2": "^3.11.5",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
