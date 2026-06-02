@@ -3,18 +3,32 @@ import { Pool, Client } from 'pg';
 import mysql from 'mysql2/promise';
 
 // ── Switch the source manually: uncomment the line you need ───────
-// const DSN = 'postgres://shabak@localhost:5432/race_sim';
-const DSN = 'mysql://root@localhost:3306/race_sim';
+const DSN = 'postgres://shabak@localhost:5432/race_sim';
+// const DSN = 'mysql://root@localhost:3306/race_sim';
 // ──────────────────────────────────────────────────────────────────
 
-const pool = new Pool({ max: 20 });
+const pool = new Pool({ connectionString: DSN, max: Number(process.env.POOL_MAX ?? 20) });
 const PORT = Number(process.env.PORT ?? 3000);
 const RACE_DELAY_MS = Number(process.env.RACE_DELAY_MS ?? 0);
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
+// USE_POOL=false → each transfer opens its own Client (no pool, no max limit).
+// USE_POOL=true (default) → borrow a connection from the shared pool.
+const USE_POOL = (process.env.USE_POOL ?? 'true') !== 'false';
+
+async function acquire() {
+    if (USE_POOL) {
+        const client = await pool.connect();
+        return { client, release: async () => client.release() };
+    }
+    const client = new Client({ connectionString: DSN });
+    await client.connect();
+    return { client, release: async () => { await client.end(); } };
+}
+
 async function transferNaive(from: number, to: number, amount: number) {
-    const client = await pool.connect();
+    const { client, release } = await acquire();
     try {
         await client.query('BEGIN');
 
@@ -53,7 +67,7 @@ async function transferNaive(from: number, to: number, amount: number) {
         await client.query('ROLLBACK').catch(() => {});
         return { ok: false, error: (e as Error).message };
     } finally {
-        client.release();
+        await release();
     }
 }
 
@@ -77,7 +91,7 @@ async function serve() {
     });
 
     app.listen(PORT, () => {
-        console.log(`server on :${PORT}  RACE_DELAY_MS=${RACE_DELAY_MS}`);
+        console.log(`server on :${PORT}  RACE_DELAY_MS=${RACE_DELAY_MS}  pool=${USE_POOL ? `on(max=${pool.options.max})` : 'off (Client per request)'}`);
     });
 }
 
@@ -88,16 +102,28 @@ async function reset() {
 }
 
 async function attack() {
-    const N = Number(process.env.N ?? 100);
+    const CONCURRENT_REQUESTS = Number(process.env.CONCURRENT_REQUESTS ?? 100);
     const amount = Number(process.env.AMOUNT ?? 1);
     const endpoint = process.env.ENDPOINT ?? '/transfer/naive';
     const url = `http://localhost:${PORT}${endpoint}`;
+
+    // Fail fast if the server is down — otherwise Promise.allSettled would
+    // swallow every ECONNREFUSED and the run would look "successful" (ok:0,
+    // drift:0, "no race detected"), faking work that never happened.
+    try {
+        const ping = await fetch(`http://localhost:${PORT}/state`);
+        if (!ping.ok) throw new Error(`health ${ping.status}`);
+    } catch {
+        console.error(`!! server not reachable on :${PORT} — start it first: npm run serve`);
+        await pool.end();
+        process.exit(1);
+    }
 
     await pool.query('UPDATE accounts SET balance = 10000');
 
     const t0 = Date.now();
     const results = await Promise.allSettled(
-        Array.from({ length: N }, () =>
+        Array.from({ length: CONCURRENT_REQUESTS }, () =>
             fetch(url, {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -127,7 +153,7 @@ async function attack() {
     const actualFrom = BigInt(rows.find(r => r.id === 1)!.balance);
     const actualTo = BigInt(rows.find(r => r.id === 2)!.balance);
 
-    console.log(`\n--- attack ${url}  N=${N} amount=${amount} ---`);
+    console.log(`\n--- attack ${url}  concurrent_requests=${CONCURRENT_REQUESTS} amount=${amount} ---`);
     console.log(`time:        ${ms}ms`);
     console.log(`ok:          ${ok}`);
     console.log(`errors:      ${JSON.stringify(errors)}`);
@@ -197,11 +223,11 @@ async function dirtyRead() {
     await A.query('ROLLBACK');
 
     console.log(`engine:           ${DSN.split(':')[0]}`);
-    console.log(`B прочитал:       balance = ${seen}`);
+    console.log(`B read:           balance = ${seen}`);
     console.log(
         seen === 99999
-            ? '!! DIRTY READ: B увидел незакоммиченные данные (MySQL READ UNCOMMITTED)'
-            : '-- грязного чтения нет: B увидел 10000 (Postgres трактует RU как READ COMMITTED)',
+            ? '!! DIRTY READ: B saw uncommitted data (MySQL READ UNCOMMITTED)'
+            : '-- no dirty read: B saw 10000 (Postgres treats RU as READ COMMITTED)',
     );
 
     await A.end();

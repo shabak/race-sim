@@ -50,7 +50,9 @@ npm run reset
 | Var             | Default            | Used by | Meaning                                                  |
 |-----------------|--------------------|---------|----------------------------------------------------------|
 | `RACE_DELAY_MS` | `0`                | serve   | Sleep between SELECT and UPDATE (widens the race window) |
-| `N`             | `100`              | attack  | Number of parallel transfer requests                     |
+| `USE_POOL`      | `true`             | serve   | `false` → each transfer opens its own Client (no pool)   |
+| `POOL_MAX`      | `20`               | serve   | Max pooled connections (when `USE_POOL=true`)            |
+| `CONCURRENT_REQUESTS` | `100`        | attack  | Number of parallel transfer requests                     |
 | `AMOUNT`        | `1`                | attack  | Amount per transfer                                      |
 | `ENDPOINT`      | `/transfer/naive`  | attack  | Endpoint under attack                                    |
 | `PORT`          | `3000`             | both    | HTTP port                                                |
