@@ -7,8 +7,7 @@
     "attack": "tsx main.ts attack",
     "reset": "tsx main.ts reset",
     "dirty": "tsx main.ts dirty",
-    "bench": "tsx bench.ts",
-    "sweep": "tsx sweep.ts"
+    "bench": "tsx bench.ts"
   },
   "dependencies": {
     "express": "^4.21.2",

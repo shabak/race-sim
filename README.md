@@ -1,6 +1,10 @@
 # race-sim
 
-A playground for reproducing and fixing database race conditions (TypeScript + Postgres/MySQL).
+Демонстрация аномалии **lost update** в Postgres и сравнение способов её убрать —
+по цене (скорость, повторы). Код к статье «Деньги из воздуха: lost update в
+Postgres и цена каждого фикса».
+
+Стек: Node + TypeScript, драйверы `pg` / `mysql2`, без ORM.
 
 ## Setup
 
@@ -8,7 +12,7 @@ A playground for reproducing and fixing database race conditions (TypeScript + P
 npm install
 ```
 
-Pick the data source in `main.ts` (top of file):
+Источник данных выбирается вверху `main.ts`:
 
 ```ts
 const DSN = 'postgres://shabak@localhost:5432/race_sim';
@@ -22,37 +26,51 @@ createdb race_sim
 psql -d race_sim -f db/schema.sql
 ```
 
-### MySQL
+## Семь способов перевода
 
-```bash
-brew install mysql
-brew services start mysql
-mysqladmin -u root create race_sim
-mysql -u root race_sim < db/schema.sql
-```
+Перевод `amount` со счёта `from` на счёт `to`, реализованный семью способами
+(`METHODS` в `main.ts`):
+
+| method           | группа         | повторы | теряет деньги? |
+|------------------|----------------|---------|----------------|
+| `naive`          | базовый        | нет     | **да**         |
+| `atomic`         | без чтения     | нет     | нет            |
+| `forUpdate`      | пессимистичный | нет     | нет            |
+| `advisory`       | пессимистичный | нет     | нет            |
+| `version`        | оптимистичный  | да      | нет            |
+| `repeatableRead` | оптимистичный  | да      | нет            |
+| `serializable`   | оптимистичный  | да      | нет            |
 
 ## Run
 
 ```bash
-# Lost-update demo (HTTP server)
-RACE_DELAY_MS=10 npm run serve   # terminal 1
-npm run attack                    # terminal 2 — fires N=100 parallel transfers
+# Прямой замер выбранного способа (в одном процессе, без HTTP)
+METHOD=naive      CONCURRENT_REQUESTS=100 npm run bench
+METHOD=forUpdate  CONCURRENT_REQUESTS=100 npm run bench
+METHOD=serializable CONCURRENT_REQUESTS=100 npm run bench
 
-# Dirty-read demo (Postgres vs MySQL, READ UNCOMMITTED)
+# То же через HTTP-сервер (реалистичнее — внешние клиенты)
+npm run serve                                   # терминал 1
+METHOD=version CONCURRENT_REQUESTS=200 npm run attack   # терминал 2
+
+# Dirty-read демо (Postgres vs MySQL, READ UNCOMMITTED)
 npm run dirty
 
-# Reset balances to 10000
+# Сброс балансов в 10000 и version в 0
 npm run reset
 ```
 
+Замер печатает: время, `ok`, число повторов (`retries`), ошибки, итоговую сумму
+(инвариант = 20000) и drift по счёту. `naive` ломает инвариант, остальные держат.
+
 ## Env vars
 
-| Var             | Default            | Used by | Meaning                                                  |
-|-----------------|--------------------|---------|----------------------------------------------------------|
-| `RACE_DELAY_MS` | `0`                | serve   | Sleep between SELECT and UPDATE (widens the race window) |
-| `USE_POOL`      | `true`             | serve   | `false` → each transfer opens its own Client (no pool)   |
-| `POOL_MAX`      | `20`               | serve   | Max pooled connections (when `USE_POOL=true`)            |
-| `CONCURRENT_REQUESTS` | `100`        | attack  | Number of parallel transfer requests                     |
-| `AMOUNT`        | `1`                | attack  | Amount per transfer                                      |
-| `ENDPOINT`      | `/transfer/naive`  | attack  | Endpoint under attack                                    |
-| `PORT`          | `3000`             | both    | HTTP port                                                |
+| Var                   | Default  | Где          | Смысл                                              |
+|-----------------------|----------|--------------|----------------------------------------------------|
+| `METHOD`              | `naive`  | bench/attack | Способ перевода (см. таблицу выше)                 |
+| `CONCURRENT_REQUESTS` | `100`    | bench/attack | Сколько переводов запустить одновременно           |
+| `AMOUNT`              | `1`      | bench/attack | Сумма одного перевода                              |
+| `RACE_DELAY_MS`       | `0`      | serve/bench  | Пауза между SELECT и UPDATE (расширяет окно гонки) |
+| `POOL_MAX`            | `20`     | все          | Размер пула соединений                             |
+| `MAX_RETRIES`         | `100000` | bench/attack | Потолок повторов для оптимистичных способов        |
+| `PORT`                | `3000`   | serve/attack | HTTP-порт                                          |

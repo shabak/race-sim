@@ -9,5 +9,5 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["main.ts", "bench.ts", "bench-old.ts", "sweep.ts"]
+  "include": ["main.ts", "bench.ts"]
 }
