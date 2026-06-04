@@ -7,7 +7,7 @@ const DSN = 'postgres://shabak@localhost:5432/race_sim';
 // const DSN = 'mysql://root@localhost:3306/race_sim';
 // ──────────────────────────────────────────────────────────────────
 
-const pool = new Pool({ connectionString: DSN, max: Number(process.env.POOL_MAX ?? 20) });
+export const pool = new Pool({ connectionString: DSN, max: Number(process.env.POOL_MAX ?? 20) });
 const PORT = Number(process.env.PORT ?? 3000);
 const RACE_DELAY_MS = Number(process.env.RACE_DELAY_MS ?? 0);
 
@@ -27,7 +27,7 @@ async function acquire() {
     return { client, release: async () => { await client.end(); } };
 }
 
-async function transferNaive(from: number, to: number, amount: number) {
+export async function transferNaive(from: number, to: number, amount: number, delayMs = RACE_DELAY_MS) {
     const { client, release } = await acquire();
     try {
         await client.query('BEGIN');
@@ -43,7 +43,7 @@ async function transferNaive(from: number, to: number, amount: number) {
             return { ok: false, error: 'insufficient' };
         }
 
-        if (RACE_DELAY_MS > 0) await sleep(RACE_DELAY_MS);
+        if (delayMs > 0) await sleep(delayMs);
 
         await client.query(
             'UPDATE accounts SET balance = $1 WHERE id = $2',
@@ -234,12 +234,18 @@ async function dirtyRead() {
     await B.end();
 }
 
-const mode = process.argv[2];
-if (mode === 'serve') serve();
-else if (mode === 'attack') attack();
-else if (mode === 'reset') reset();
-else if (mode === 'dirty') dirtyRead();
-else {
-    console.error('usage: tsx main.ts (serve|attack|reset|dirty)');
-    process.exit(1);
+// Run the CLI router only when main.ts is the entry point.
+// When imported (e.g. from bench.ts) this block is skipped.
+import { fileURLToPath } from 'node:url';
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMain) {
+    const mode = process.argv[2];
+    if (mode === 'serve') serve();
+    else if (mode === 'attack') attack();
+    else if (mode === 'reset') reset();
+    else if (mode === 'dirty') dirtyRead();
+    else {
+        console.error('usage: tsx main.ts (serve|attack|reset|dirty)');
+        process.exit(1);
+    }
 }

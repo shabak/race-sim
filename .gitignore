@@ -16,4 +16,4 @@ node_modules/
 npm-debug.log*
 
 # Local notes (Russian theory)
-isolation-levels.md
+0-isolation-levels.md
