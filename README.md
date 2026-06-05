@@ -44,10 +44,14 @@ psql -d race_sim -f db/schema.sql
 ## Run
 
 ```bash
-# Прямой замер выбранного способа (в одном процессе, без HTTP)
-METHOD=naive      CONCURRENT_REQUESTS=100 npm run bench
-METHOD=forUpdate  CONCURRENT_REQUESTS=100 npm run bench
-METHOD=serializable CONCURRENT_REQUESTS=100 npm run bench
+# Прямой замер выбранного способа (в одном процессе, без HTTP).
+# Медиана по 10 прогонам с прогревом, на 2 счетах vs 1000, под задержкой:
+METHOD=atomic    ACCOUNTS=2    RACE_DELAY_MS=10 RUNS=13 WARMUP=3 npm run bench
+METHOD=forUpdate ACCOUNTS=2    RACE_DELAY_MS=10 RUNS=13 WARMUP=3 npm run bench
+METHOD=version   ACCOUNTS=1000 RACE_DELAY_MS=0  RUNS=13 WARMUP=3 npm run bench
+
+# Один прогон наивного способа — видно потерю денег (инвариант ломается):
+METHOD=naive ACCOUNTS=2 CONCURRENT_REQUESTS=200 npm run bench
 
 # То же через HTTP-сервер (реалистичнее — внешние клиенты)
 npm run serve                                   # терминал 1
@@ -60,17 +64,21 @@ npm run dirty
 npm run reset
 ```
 
-Замер печатает: время, `ok`, число повторов (`retries`), ошибки, итоговую сумму
-(инвариант = 20000) и drift по счёту. `naive` ломает инвариант, остальные держат.
+Замер печатает: медиану throughput (ops/s) с min–max, число повторов (`retries`)
+и проверку инварианта (сумма балансов постоянна). `naive` инвариант ломает,
+остальные держат.
 
 ## Env vars
 
-| Var                   | Default  | Где          | Смысл                                              |
-|-----------------------|----------|--------------|----------------------------------------------------|
-| `METHOD`              | `naive`  | bench/attack | Способ перевода (см. таблицу выше)                 |
-| `CONCURRENT_REQUESTS` | `100`    | bench/attack | Сколько переводов запустить одновременно           |
-| `AMOUNT`              | `1`      | bench/attack | Сумма одного перевода                              |
-| `RACE_DELAY_MS`       | `0`      | serve/bench  | Пауза между SELECT и UPDATE (расширяет окно гонки) |
-| `POOL_MAX`            | `20`     | все          | Размер пула соединений                             |
-| `MAX_RETRIES`         | `100000` | bench/attack | Потолок повторов для оптимистичных способов        |
-| `PORT`                | `3000`   | serve/attack | HTTP-порт                                          |
+| Var                   | Default  | Где          | Смысл                                                       |
+|-----------------------|----------|--------------|-------------------------------------------------------------|
+| `METHOD`              | `naive`  | bench/attack | Способ перевода (см. таблицу выше)                          |
+| `CONCURRENT_REQUESTS` | `100`    | bench/attack | Сколько переводов запустить одновременно                    |
+| `ACCOUNTS`            | `2`      | bench        | Число счетов: 2 — точка конкуренции, 1000 — нагрузка размазана |
+| `AMOUNT`              | `1`      | bench/attack | Сумма одного перевода                                       |
+| `RACE_DELAY_MS`       | `0`      | serve/bench  | Работа внутри транзакции (расширяет окно удержания строки)  |
+| `RUNS`                | `1`      | bench        | Сколько раз повторить замер (берётся медиана)               |
+| `WARMUP`              | `0`      | bench        | Сколько первых прогонов отбросить на прогрев                |
+| `POOL_MAX`            | `20`     | все          | Размер пула соединений                                      |
+| `MAX_RETRIES`         | `100000` | bench/attack | Потолок повторов для оптимистичных способов                 |
+| `PORT`                | `3000`   | serve/attack | HTTP-порт                                                   |
