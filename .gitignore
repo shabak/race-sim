@@ -16,9 +16,6 @@ node_modules/
 npm-debug.log*
 
 # Article drafts & notes (not part of the public code repo)
-0-isolation-levels.md
-1-races-isolation-findings.md
-2-failure-dynamics-findings.md
-план-статья.md
-ГОТОВО-ДЛЯ-ХАБРА.md
 .gstack/
+
+docs/
