@@ -1,7 +1,7 @@
 # race-sim
 
-Demo examples for the article «Деньги из воздуха: lost update в Postgres и цена
-каждого фикса»: https://habr.com/ru/articles/1044190/
+Demo examples for the article «2 + 2 = 6 and how we fix it: lost updates in
+Postgres»: https://habr.com/ru/articles/1044190/
 
 Shows the **lost update** anomaly in Postgres and compares the ways to remove it,
 along with their cost (speed, retries).
