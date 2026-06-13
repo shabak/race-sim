@@ -1,10 +1,12 @@
 # race-sim
 
-Демонстрация аномалии **lost update** в Postgres и сравнение способов её убрать —
-по цене (скорость, повторы). Код к статье «Деньги из воздуха: lost update в
-Postgres и цена каждого фикса».
+Demo examples for the article «Деньги из воздуха: lost update в Postgres и цена
+каждого фикса»: https://habr.com/ru/articles/1044190/
 
-Стек: Node + TypeScript, драйверы `pg` / `mysql2`, без ORM.
+Shows the **lost update** anomaly in Postgres and compares the ways to remove it,
+along with their cost (speed, retries).
+
+Stack: Node + TypeScript, the `pg` / `mysql2` drivers, no ORM.
 
 ## Setup
 
@@ -12,7 +14,7 @@ Postgres и цена каждого фикса».
 npm install
 ```
 
-Источник данных выбирается вверху `main.ts`:
+The data source is selected at the top of `main.ts`:
 
 ```ts
 const DSN = 'postgres://shabak@localhost:5432/race_sim';
@@ -26,59 +28,59 @@ createdb race_sim
 psql -d race_sim -f db/schema.sql
 ```
 
-## Семь способов перевода
+## Seven ways to do the transfer
 
-Перевод `amount` со счёта `from` на счёт `to`, реализованный семью способами
-(`METHODS` в `main.ts`):
+Transferring `amount` from account `from` to account `to`, implemented in seven
+ways (`METHODS` in `main.ts`):
 
-| method           | группа         | повторы | теряет деньги? |
-|------------------|----------------|---------|----------------|
-| `naive`          | базовый        | нет     | **да**         |
-| `atomic`         | без чтения     | нет     | нет            |
-| `forUpdate`      | пессимистичный | нет     | нет            |
-| `advisory`       | пессимистичный | нет     | нет            |
-| `version`        | оптимистичный  | да      | нет            |
-| `repeatableRead` | оптимистичный  | да      | нет            |
-| `serializable`   | оптимистичный  | да      | нет            |
+| method           | group        | retries | loses money? |
+|------------------|--------------|---------|--------------|
+| `naive`          | baseline     | no      | **yes**      |
+| `atomic`         | no read      | no      | no           |
+| `forUpdate`      | pessimistic  | no      | no           |
+| `advisory`       | pessimistic  | no      | no           |
+| `version`        | optimistic   | yes     | no           |
+| `repeatableRead` | optimistic   | yes     | no           |
+| `serializable`   | optimistic   | yes     | no           |
 
 ## Run
 
 ```bash
-# Прямой замер выбранного способа (в одном процессе, без HTTP).
-# Медиана по 10 прогонам с прогревом, на 2 счетах vs 1000, под задержкой:
+# Direct measurement of the selected method (single process, no HTTP).
+# Median over 10 runs with warmup, on 2 accounts vs 1000, under delay:
 METHOD=atomic    ACCOUNTS=2    RACE_DELAY_MS=10 RUNS=13 WARMUP=3 npm run bench
 METHOD=forUpdate ACCOUNTS=2    RACE_DELAY_MS=10 RUNS=13 WARMUP=3 npm run bench
 METHOD=version   ACCOUNTS=1000 RACE_DELAY_MS=0  RUNS=13 WARMUP=3 npm run bench
 
-# Один прогон наивного способа — видно потерю денег (инвариант ломается):
+# A single run of the naive method — money is lost (the invariant breaks):
 METHOD=naive ACCOUNTS=2 CONCURRENT_REQUESTS=200 npm run bench
 
-# То же через HTTP-сервер (реалистичнее — внешние клиенты)
-npm run serve                                   # терминал 1
-METHOD=version CONCURRENT_REQUESTS=200 npm run attack   # терминал 2
+# Same thing over an HTTP server (more realistic — external clients)
+npm run serve                                   # terminal 1
+METHOD=version CONCURRENT_REQUESTS=200 npm run attack   # terminal 2
 
-# Dirty-read демо (Postgres vs MySQL, READ UNCOMMITTED)
+# Dirty-read demo (Postgres vs MySQL, READ UNCOMMITTED)
 npm run dirty
 
-# Сброс балансов в 10000 и version в 0
+# Reset balances to 10000 and version to 0
 npm run reset
 ```
 
-Замер печатает: медиану throughput (ops/s) с min–max, число повторов (`retries`)
-и проверку инварианта (сумма балансов постоянна). `naive` инвариант ломает,
-остальные держат.
+The measurement prints: the median throughput (ops/s) with min–max, the number
+of retries (`retries`), and the invariant check (the sum of balances stays
+constant). `naive` breaks the invariant, the others hold it.
 
 ## Env vars
 
-| Var                   | Default  | Где          | Смысл                                                       |
-|-----------------------|----------|--------------|-------------------------------------------------------------|
-| `METHOD`              | `naive`  | bench/attack | Способ перевода (см. таблицу выше)                          |
-| `CONCURRENT_REQUESTS` | `100`    | bench/attack | Сколько переводов запустить одновременно                    |
-| `ACCOUNTS`            | `2`      | bench        | Число счетов: 2 — точка конкуренции, 1000 — нагрузка размазана |
-| `AMOUNT`              | `1`      | bench/attack | Сумма одного перевода                                       |
-| `RACE_DELAY_MS`       | `0`      | serve/bench  | Работа внутри транзакции (расширяет окно удержания строки)  |
-| `RUNS`                | `1`      | bench        | Сколько раз повторить замер (берётся медиана)               |
-| `WARMUP`              | `0`      | bench        | Сколько первых прогонов отбросить на прогрев                |
-| `POOL_MAX`            | `20`     | все          | Размер пула соединений                                      |
-| `MAX_RETRIES`         | `100000` | bench/attack | Потолок повторов для оптимистичных способов                 |
-| `PORT`                | `3000`   | serve/attack | HTTP-порт                                                   |
+| Var                   | Default  | Where        | Meaning                                                       |
+|-----------------------|----------|--------------|---------------------------------------------------------------|
+| `METHOD`              | `naive`  | bench/attack | Transfer method (see the table above)                         |
+| `CONCURRENT_REQUESTS` | `100`    | bench/attack | How many transfers to run at the same time                    |
+| `ACCOUNTS`            | `2`      | bench        | Number of accounts: 2 — contention point, 1000 — load spread out |
+| `AMOUNT`              | `1`      | bench/attack | Amount of a single transfer                                   |
+| `RACE_DELAY_MS`       | `0`      | serve/bench  | Work inside the transaction (widens the row-hold window)      |
+| `RUNS`                | `1`      | bench        | How many times to repeat the measurement (median is taken)    |
+| `WARMUP`              | `0`      | bench        | How many first runs to drop for warmup                        |
+| `POOL_MAX`            | `20`     | all          | Connection pool size                                          |
+| `MAX_RETRIES`         | `100000` | bench/attack | Retry ceiling for the optimistic methods                      |
+| `PORT`                | `3000`   | serve/attack | HTTP port                                                     |
